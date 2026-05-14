@@ -1,0 +1,17 @@
+# Generated artifacts (rebuilt by the pipeline scripts)
+data/
+db/
+indexes/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
