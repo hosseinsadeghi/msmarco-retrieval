@@ -82,7 +82,57 @@ The hybrid script adds one extra step: fuse the two ranked lists with RRF
 (`score = sum(1 / (rrf_k + rank))`). RRF needs no score normalization, which
 matters because BM25 scores and cosine similarities live on different scales.
 
-## Evaluation
+## MTEB / MTEB-v2 retrieval datasets
+
+The same three retrievers can run against any MTEB retrieval dataset (BEIR
+format on the `mteb/*` HuggingFace org). Two scripts handle the lifecycle:
+
+```bash
+# 1. Download (corpus + queries + qrels JSONL -> data/mteb/<name>/)
+uv run python scripts/mteb_download.py --dataset NFCorpus
+uv run python scripts/mteb_download.py --dataset SciFact
+uv run python scripts/mteb_download.py --dataset ArguAna
+
+# 2. End-to-end: build DB + embeddings + BM25, run all 3 retrievers,
+#    compute Recall@k / MRR@k / nDCG@k, write results/mteb_<name>.md
+uv run python scripts/mteb_run.py --dataset NFCorpus
+uv run python scripts/mteb_run.py --dataset SciFact
+uv run python scripts/mteb_run.py --dataset ArguAna
+```
+
+Each dataset gets its own `db/mteb_<name>.sqlite` and `indexes/mteb_<name>_bm25.pkl`,
+so they don't collide. Pass `--rebuild` to recompute the DB/index for a
+dataset; otherwise cached artifacts are reused.
+
+A small map of named presets lives in
+`src/msmarco_retrieval/mteb_helpers.py` (`NFCorpus`, `SciFact`, `FiQA2018`,
+`ArguAna`, `SCIDOCS`, `TRECCOVID`, `Touche2020`, `Quora`). For anything else
+on the `mteb/*` org, pass `--hf-id mteb/<other>` directly.
+
+**MTEB vs MTEB-v2.** MTEB v2 (MMTEB) mostly *adds* new retrieval datasets in
+the same BEIR layout — the same two scripts work for either version. A few
+v2-specific variants (e.g. the qrels-only `*HardNegatives` repos) need extra
+plumbing that isn't included here.
+
+Sample headline metrics (full reports in `results/mteb_*.md`):
+
+| Dataset  | Retriever    | nDCG@10 |
+| ---      | ---          | ---     |
+| NFCorpus | BM25         | 0.313   |
+| NFCorpus | Dense        | 0.319   |
+| NFCorpus | Hybrid (RRF) | **0.334** |
+| SciFact  | BM25         | 0.667   |
+| SciFact  | Dense        | 0.648   |
+| SciFact  | Hybrid (RRF) | **0.689** |
+| ArguAna  | BM25         | 0.354   |
+| ArguAna  | Dense        | 0.368   |
+| ArguAna  | Hybrid (RRF) | **0.389** |
+
+(Hybrid wins consistently on BEIR-style data — the opposite of what happened
+on the MS MARCO Q-validation eval above, because MS MARCO queries are short
+and semantic, while BEIR has more specialized vocabulary that BM25 helps on.)
+
+## Evaluation (MS MARCO)
 
 `scripts/eval_summary.py` runs all three retrievers over a random sample of
 queries and scores them against the human `is_selected` flag for each query
