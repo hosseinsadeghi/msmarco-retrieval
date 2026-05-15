@@ -1,170 +1,133 @@
-# MS MARCO retrieval playground
+# Retrieval playground: BM25 / dense / hybrid over MTEB-style QA datasets
 
 Compare three retrievers — sparse (BM25), dense (sentence-transformer
-embeddings), and hybrid (Reciprocal Rank Fusion of the two) — over passages
-from the MS MARCO QA dataset.
+embeddings), and hybrid (Reciprocal Rank Fusion) — over MS MARCO and BEIR /
+MTEB / MTEB-v2 retrieval datasets, using the same five-script CLI for
+everything.
 
-## Why MS MARCO?
-
-`microsoft/ms_marco` (v2.1) is a QA dataset built from real Bing queries. Each
-example carries:
-
-- `query` — a natural-language question
-- `answers` — one or more human-written answer strings
-- `passages` — a handful of candidate web passages, with `is_selected=1` on the
-  ones a human marked as containing the answer
-- `query_type` — `description` / `numeric` / `entity` / `location` / `person`
-
-`scripts/01_download.py` prints a sample after the download so you can verify
-this for yourself.
-
-## Layout
-
-```
-msmarco/
-├── data/                       # raw downloaded JSONL
-├── db/msmarco.sqlite           # passages + queries + embeddings (BLOB)
-├── indexes/bm25.pkl            # pickled BM25Okapi + passage-id mapping
-├── src/msmarco_retrieval/      # small shared helpers
-│   ├── config.py               # paths and defaults
-│   ├── text.py                 # BM25 tokenizer
-│   ├── embeddings.py           # sentence-transformer wrapper
-│   └── db.py                   # SQLite schema + helpers
-└── scripts/
-    ├── 01_download.py          # download + QA sanity check
-    ├── 02_build_db.py          # SQLite + embedding index
-    ├── 03_build_bm25.py        # BM25 index
-    ├── search_bm25.py          # BM25-only query
-    ├── search_vector.py        # dense-only query
-    └── search_hybrid.py        # BM25 + dense fused via RRF
-```
-
-## Install
+## Five-script CLI (same for every dataset)
 
 ```bash
-cd msmarco
-uv sync                  # or: pip install -e .
+scripts/list_datasets.py    # show available datasets and their benchmarks
+scripts/download.py         # --dataset X     pull raw files
+scripts/build.py            # --dataset X     SQLite + embeddings + BM25
+scripts/search.py           # --dataset X --retriever {bm25,dense,hybrid} -q "..."
+scripts/eval.py             # --dataset X     full benchmark eval (Recall@k / MRR@k / nDCG@k)
 ```
 
-## Pipeline
+`scripts/list_datasets.py` is the entry point — it tells you which datasets
+exist and which benchmarks each one is part of:
 
-Run the three build steps once. Each is independent of the others except for
-ordering:
+```
+$ python scripts/list_datasets.py
+NAME        KIND     BENCHMARKS               DESCRIPTION
+----------------------------------------------------------------------
+ArguAna     beir     BEIR, MTEB, MTEB-v2      Counter-argument retrieval (~8.7k docs).
+FiQA2018    beir     BEIR, MTEB, MTEB-v2      Financial opinion QA (~57k docs).
+MSMARCO     msmarco  MS-MARCO, MTEB, MTEB-v2  MS MARCO v2.1 QA passages from Bing queries.
+NFCorpus    beir     BEIR, MTEB, MTEB-v2      Medical scientific literature retrieval.
+Quora       beir     BEIR, MTEB, MTEB-v2      Duplicate-question retrieval.
+SCIDOCS     beir     BEIR, MTEB, MTEB-v2      Citation prediction over scientific papers.
+SciFact     beir     BEIR, MTEB, MTEB-v2      Scientific claim verification.
+TRECCOVID   beir     BEIR, MTEB, MTEB-v2      COVID-19 scientific literature retrieval.
+Touche2020  beir     BEIR, MTEB, MTEB-v2      Controversial-topic argument retrieval.
+
+$ python scripts/list_datasets.py --benchmark MTEB-v2     # filter
+```
+
+The registry lives in `src/msmarco_retrieval/datasets.py`. Each `DatasetSpec`
+has a `kind` (`"msmarco"` or `"beir"`) that dispatches the download/build
+behavior, and a list of `benchmarks` it belongs to. Most BEIR datasets are
+also part of MTEB and MTEB-v2 — v2 mostly *adds* new datasets in the same
+format rather than changing the format.
+
+## End-to-end usage
 
 ```bash
-uv run python scripts/01_download.py               # ~1000 validation queries
-uv run python scripts/02_build_db.py               # fills SQLite + embeddings
-uv run python scripts/03_build_bm25.py             # builds BM25 index
+uv sync                                                    # one-time
+
+# Any registered dataset goes through the same four steps:
+python scripts/download.py --dataset NFCorpus
+python scripts/build.py    --dataset NFCorpus              # DB + embeddings + BM25
+python scripts/search.py   --dataset NFCorpus --retriever hybrid -q "vegan heart disease"
+python scripts/eval.py     --dataset NFCorpus              # writes results/NFCorpus.md
+
+# Same flow for MS MARCO:
+python scripts/download.py --dataset MSMARCO --num 1000    # MSMARCO-only flag
+python scripts/build.py    --dataset MSMARCO
+python scripts/eval.py     --dataset MSMARCO --num 200
 ```
 
-Then query with any of the three search scripts. They all accept either a
-hand-written question via `-q` or pull a random query from the loaded MS MARCO
-slice when called with no argument:
+Per-dataset files live at:
 
-```bash
-uv run python scripts/search_bm25.py   -q "what is the capital of france?"
-uv run python scripts/search_vector.py -q "what is the capital of france?"
-uv run python scripts/search_hybrid.py -q "what is the capital of france?"
-
-uv run python scripts/search_hybrid.py            # random question from the dataset
+```
+data/<name>/...           # raw downloaded files
+db/<name>.sqlite          # passages + embeddings + queries + qrels
+indexes/<name>_bm25.pkl   # pickled BM25Okapi + id mapping
+results/<name>.md         # eval report
 ```
 
-## How each search script is organized
+`build.py` and `eval.py` reuse cached artifacts if present; pass `--rebuild`
+to force recomputation.
 
-All three follow the same four-step shape so you can diff them mentally:
+## How each script is organized
 
-1. **Load Q** — from CLI or random row in `queries` table
-2. **Prepare** — tokenize (BM25) and/or encode (dense)
-3. **Score** — `bm25.get_scores(...)` and/or `mat @ q_vec`
-4. **Print top-k**
+Every script follows a tight "load → prepare → score → output" shape so they
+read top-to-bottom with no surprises:
 
-The hybrid script adds one extra step: fuse the two ranked lists with RRF
-(`score = sum(1 / (rrf_k + rank))`). RRF needs no score normalization, which
-matters because BM25 scores and cosine similarities live on different scales.
+- **`search.py`** — load Q (CLI or random) → tokenize and/or encode → score
+  with the chosen retriever → print top-k with ✅ on qrel-positive hits.
+- **`eval.py`** — pick all queries with at least one positive qrel → encode in
+  one batch → run all three retrievers per query → write Markdown report with
+  aggregate metrics + sample top-3 rows.
 
-## MTEB / MTEB-v2 retrieval datasets
+The three retrievers themselves live in `src/msmarco_retrieval/retrieve.py`:
 
-The same three retrievers can run against any MTEB retrieval dataset (BEIR
-format on the `mteb/*` HuggingFace org). Two scripts handle the lifecycle:
-
-```bash
-# 1. Download (corpus + queries + qrels JSONL -> data/mteb/<name>/)
-uv run python scripts/mteb_download.py --dataset NFCorpus
-uv run python scripts/mteb_download.py --dataset SciFact
-uv run python scripts/mteb_download.py --dataset ArguAna
-
-# 2. End-to-end: build DB + embeddings + BM25, run all 3 retrievers,
-#    compute Recall@k / MRR@k / nDCG@k, write results/mteb_<name>.md
-uv run python scripts/mteb_run.py --dataset NFCorpus
-uv run python scripts/mteb_run.py --dataset SciFact
-uv run python scripts/mteb_run.py --dataset ArguAna
+```python
+bm25_search(bm25, ids, query, depth)        # tokenize + BM25Okapi.get_scores
+dense_search(mat, ids, q_vec, depth)        # single matmul (cosine, both sides unit-norm)
+rrf_fuse([bm25_top, dense_top], rrf_k, depth)
 ```
 
-Each dataset gets its own `db/mteb_<name>.sqlite` and `indexes/mteb_<name>_bm25.pkl`,
-so they don't collide. Pass `--rebuild` to recompute the DB/index for a
-dataset; otherwise cached artifacts are reused.
+## Sample results
 
-A small map of named presets lives in
-`src/msmarco_retrieval/mteb_helpers.py` (`NFCorpus`, `SciFact`, `FiQA2018`,
-`ArguAna`, `SCIDOCS`, `TRECCOVID`, `Touche2020`, `Quora`). For anything else
-on the `mteb/*` org, pass `--hf-id mteb/<other>` directly.
+| Dataset  | Retriever    | nDCG@10 | Notes                                |
+| ---      | ---          | ---     | ---                                  |
+| MSMARCO  | BM25         | 0.535   | 200 random queries, 4,973-passage corpus |
+| MSMARCO  | Dense        | **0.681** | short semantic queries — dense wins |
+| MSMARCO  | Hybrid (RRF) | 0.633   |                                      |
+| NFCorpus | BM25         | 0.313   | 323 queries, 3,633-passage corpus    |
+| NFCorpus | Dense        | 0.319   |                                      |
+| NFCorpus | Hybrid (RRF) | **0.334** | medical jargon → exact match helps  |
 
-**MTEB vs MTEB-v2.** MTEB v2 (MMTEB) mostly *adds* new retrieval datasets in
-the same BEIR layout — the same two scripts work for either version. A few
-v2-specific variants (e.g. the qrels-only `*HardNegatives` repos) need extra
-plumbing that isn't included here.
+Full reports with sample qualitative rows live in `results/<name>.md`.
 
-Sample headline metrics (full reports in `results/mteb_*.md`):
+## Unified SQLite schema
 
-| Dataset  | Retriever    | nDCG@10 |
-| ---      | ---          | ---     |
-| NFCorpus | BM25         | 0.313   |
-| NFCorpus | Dense        | 0.319   |
-| NFCorpus | Hybrid (RRF) | **0.334** |
-| SciFact  | BM25         | 0.667   |
-| SciFact  | Dense        | 0.648   |
-| SciFact  | Hybrid (RRF) | **0.689** |
-| ArguAna  | BM25         | 0.354   |
-| ArguAna  | Dense        | 0.368   |
-| ArguAna  | Hybrid (RRF) | **0.389** |
+Both dataset kinds land in the same three tables, so everything downstream of
+`build.py` is kind-agnostic:
 
-(Hybrid wins consistently on BEIR-style data — the opposite of what happened
-on the MS MARCO Q-validation eval above, because MS MARCO queries are short
-and semantic, while BEIR has more specialized vocabulary that BM25 helps on.)
-
-## Evaluation (MS MARCO)
-
-`scripts/eval_summary.py` runs all three retrievers over a random sample of
-queries and scores them against the human `is_selected` flag for each query
-(treating those passages as gold):
-
-```bash
-uv run python scripts/eval_summary.py --num 200
+```
+passages(id, external_id, text, embedding BLOB)
+queries (id, external_id, text, answers JSON or NULL)
+qrels   (query_pk, passage_pk, relevance)
 ```
 
-It reports **Recall@k** (any gold in top-k) and **MRR@k** (reciprocal rank of
-the first gold hit), and writes a full Markdown report — table + qualitative
-samples with ✅ markers — to `results/summary.md`. A pre-computed example
-(200 queries, seed=42, 9947-passage corpus) is checked in at
-[`results/summary.md`](results/summary.md):
-
-| Retriever    | Recall@1 | Recall@5 | Recall@10 | MRR@10 |
-| ---          | ---      | ---      | ---       | ---    |
-| BM25         | 0.220    | 0.655    | 0.850     | 0.398  |
-| Dense        | 0.385    | 0.845    | 0.975     | 0.579  |
-| Hybrid (RRF) | 0.330    | 0.795    | 0.940     | 0.512  |
-
-(Dense beats RRF here because the BM25 ranks it averages in are noticeably
-weaker. Hybrid wins when you weight the two retrievers, train a reranker on
-top, or run on a domain where exact-term matching matters more.)
+- `external_id` is the source dataset's id (BEIR `_id` strings, or `pN` for
+  MS MARCO's deduplicated passages).
+- `answers` is populated for MS MARCO and NULL for BEIR.
+- `qrels.relevance > 0` means "relevant"; nDCG honors the graded value.
 
 ## Tweakable knobs
 
-- `src/msmarco_retrieval/config.py` — embedding model, default split, default
-  query count, paths
-- `src/msmarco_retrieval/text.py` — BM25 stopwords and tokenizer regex
-- `--candidates` and `--rrf-k` on `search_hybrid.py` — fusion depth and smoothing
-- `--num`, `--depth`, `--samples`, `--seed` on `eval_summary.py`
+- `src/msmarco_retrieval/config.py` — embedding model, paths.
+- `src/msmarco_retrieval/text.py` — BM25 tokenizer regex + stopwords.
+- `src/msmarco_retrieval/datasets.py` — add new entries to `REGISTRY` to
+  support more datasets. For anything else on the `mteb/*` HF org that follows
+  the BEIR layout (corpus / queries / default), one new `DatasetSpec` entry is
+  the whole change.
+- CLI flags on `build.py` / `search.py` / `eval.py`: `--rebuild`, `--depth`,
+  `--rrf-k`, `--candidates`, `--num`, `--samples`, `--seed`.
 
 ## License
 

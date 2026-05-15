@@ -1,6 +1,8 @@
 # NFCorpus — retrieval summary
 
-Corpus: **3,633** passages.   Queries with qrels: **323**.
+Source: `mteb/nfcorpus`   |   Benchmarks: BEIR, MTEB, MTEB-v2
+
+Corpus: **3,633** passages.   Queries evaluated: **323**.
 Retrieval depth: 100.  RRF k = 60.
 
 ## Aggregate metrics
