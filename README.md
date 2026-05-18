@@ -5,6 +5,11 @@ embeddings), and hybrid (Reciprocal Rank Fusion) — over MS MARCO and BEIR /
 MTEB / MTEB-v2 retrieval datasets, using the same five-script CLI for
 everything.
 
+Also included: [`llm_judges/`](llm_judges/) — independent hands-on demos of
+five open-source LLM-quality / LLM-routing models (Prometheus 2, PandaLM,
+Auto-J, Vectara HHEM, RouteLLM). Each subfolder is self-contained with its
+own DS-style README and a runnable `demo.py`.
+
 ## Five-script CLI (same for every dataset)
 
 ```bash

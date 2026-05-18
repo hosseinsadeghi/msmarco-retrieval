@@ -1,0 +1,19 @@
+# Big things you don't want to commit
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+
+# Downloaded models live in the HF cache (~/.cache/huggingface) by default;
+# if you change HF_HOME to point at a local folder, ignore it here too.
+models/
+checkpoints/
+data/
+outputs/
+
+# Editor noise
+.vscode/
+.idea/
+.DS_Store

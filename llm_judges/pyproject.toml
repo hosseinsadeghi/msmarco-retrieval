@@ -1,0 +1,67 @@
+[project]
+name = "llm-judges"
+version = "0.1.0"
+description = "Hands-on demos of LLM-as-judge and LLM-routing models: Prometheus, PandaLM, Auto-J, Vectara HHEM, RouteLLM"
+readme = "README.md"
+authors = [
+    { name = "Hossein Sadeghi", email = "hse1984@gmail.com" }
+]
+requires-python = ">=3.10,<3.13"
+
+# Core deps shared by every demo. Each model has its own extra below, so you
+# only pull in what you actually want to run.
+dependencies = [
+    "torch>=2.0",
+    # Pinned to 4.x: transformers 5.x reorganized internals (e.g. the
+    # `all_tied_weights_keys` attribute) and breaks HHEM's custom remote
+    # code as well as several other community model repos.
+    "transformers>=4.40,<5",
+    "huggingface-hub>=0.23",
+    "datasets>=3.0",
+]
+
+[project.optional-dependencies]
+# Prometheus-eval ships its own wrapper that prefers vLLM as the inference
+# backend but also supports any LiteLLM-compatible endpoint or raw HF.
+prometheus = [
+    "prometheus-eval>=0.1.20",
+]
+
+# PandaLM is published on HuggingFace but not on PyPI; we load it via
+# plain HF transformers (no extra pip package needed) and apply its prompt
+# format ourselves. accelerate helps with device placement.
+pandalm = [
+    "accelerate>=0.30",
+]
+
+# Auto-J is plain HF transformers; bitsandbytes adds the 4-bit option but
+# requires CUDA at runtime (no CPU path).
+auto_j = [
+    "accelerate>=0.30",
+    "bitsandbytes>=0.43; platform_system != 'Darwin'",
+]
+
+# Vectara HHEM-2.1-Open is a small DeBERTa-v3 cross-encoder. CPU-friendly.
+hhem = [
+    "sentencepiece>=0.2",
+    "protobuf>=4",
+]
+
+# RouteLLM ships routers (matrix factorization, BERT, etc.) trained on
+# Chatbot Arena preferences. Inference is light; the heavy bits are optional.
+routellm = [
+    "routellm>=0.2",
+    "scikit-learn>=1.3",
+    "pandas>=2.0",
+]
+
+[tool.uv]
+# This project is a collection of standalone demo scripts, not a library.
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
