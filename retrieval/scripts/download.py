@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from datasets import load_dataset  # noqa: E402
 
-from msmarco_retrieval.datasets import dataset_paths, get  # noqa: E402
+from retrieval.datasets import dataset_paths, get  # noqa: E402
 
 
 # ----------------------- per-kind download functions ----------------------- #

@@ -21,10 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from msmarco_retrieval.datasets import dataset_paths, get  # noqa: E402
-from msmarco_retrieval.db import connect, load_all_passages  # noqa: E402
-from msmarco_retrieval.embeddings import encode  # noqa: E402
-from msmarco_retrieval.retrieve import bm25_search, dense_search, rrf_fuse  # noqa: E402
+from retrieval.datasets import dataset_paths, get  # noqa: E402
+from retrieval.db import connect, load_all_passages  # noqa: E402
+from retrieval.embeddings import encode  # noqa: E402
+from retrieval.retrieve import bm25_search, dense_search, rrf_fuse  # noqa: E402
 
 KS = (1, 5, 10)
 

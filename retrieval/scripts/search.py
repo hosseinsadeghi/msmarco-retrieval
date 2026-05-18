@@ -20,10 +20,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from msmarco_retrieval.datasets import dataset_paths, get  # noqa: E402
-from msmarco_retrieval.db import connect, load_all_passages  # noqa: E402
-from msmarco_retrieval.embeddings import encode  # noqa: E402
-from msmarco_retrieval.retrieve import bm25_search, dense_search, rrf_fuse  # noqa: E402
+from retrieval.datasets import dataset_paths, get  # noqa: E402
+from retrieval.db import connect, load_all_passages  # noqa: E402
+from retrieval.embeddings import encode  # noqa: E402
+from retrieval.retrieve import bm25_search, dense_search, rrf_fuse  # noqa: E402
 
 
 def main() -> None:

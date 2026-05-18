@@ -24,10 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from rank_bm25 import BM25Okapi  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from msmarco_retrieval.datasets import dataset_paths, get  # noqa: E402
-from msmarco_retrieval.db import connect, vec_to_blob  # noqa: E402
-from msmarco_retrieval.embeddings import encode  # noqa: E402
-from msmarco_retrieval.text import tokenize  # noqa: E402
+from retrieval.datasets import dataset_paths, get  # noqa: E402
+from retrieval.db import connect, vec_to_blob  # noqa: E402
+from retrieval.embeddings import encode  # noqa: E402
+from retrieval.text import tokenize  # noqa: E402
 
 
 def load_jsonl(path: Path) -> list[dict]:
