@@ -1,0 +1,57 @@
+[project]
+name = "agent-eval"
+version = "0.1.0"
+description = "Hands-on demos of agent-evaluation benchmarks: tau-bench, SWE-bench Verified, GAIA."
+readme = "README.md"
+authors = [
+    { name = "Hossein Sadeghi", email = "hse1984@gmail.com" }
+]
+requires-python = ">=3.10,<3.13"
+
+# Core deps shared by every demo. Each benchmark has its own extra below so
+# you only pull what you actually plan to run.
+dependencies = [
+    "datasets>=3.0",
+    "litellm>=1.40",     # OpenAI / Anthropic / local in one API
+    "openai>=1.40",      # tau-bench / GAIA use the chat-completions schema
+    "pydantic>=2.0",
+    "rich>=13",          # pretty progress / tables in demos
+]
+
+[project.optional-dependencies]
+# τ-bench is published on GitHub; install from source.
+# (When/if it ships to PyPI under `tau-bench`, swap the git URL out.)
+tau_bench = [
+    "tau-bench @ git+https://github.com/sierra-research/tau-bench.git",
+]
+
+# SWE-bench evaluation pipeline. The package itself installs cleanly without
+# Docker, but running the grader (`swebench.harness.run_evaluation`) needs
+# the Docker daemon + ~150 GB of disk for the per-repo container images.
+swe_bench = [
+    "swebench>=2.1",
+    "unidiff>=0.7",
+    "ghapi>=1.0",
+]
+
+# GAIA is hosted on HuggingFace as a gated dataset; `datasets` is all the
+# loader needs. The browsing-tool stub uses `requests` + `beautifulsoup4`.
+gaia = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+]
+
+all = [
+    "agent-eval[tau_bench,swe_bench,gaia]",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

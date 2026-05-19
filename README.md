@@ -11,6 +11,11 @@ folder and start there.
 | ---                               | ---                                                                                                        |
 | [`retrieval/`](retrieval/)        | BM25 / dense / hybrid retrieval over MS MARCO + BEIR / MTEB / MTEB-v2 datasets. One unified CLI: `download → build → search → eval`. |
 | [`llm_judges/`](llm_judges/)      | Hands-on demos of 5 LLM-quality / LLM-routing models: Prometheus 2, PandaLM, Auto-J (+ 4-bit), Vectara HHEM, RouteLLM. |
+| [`rag_eval/`](rag_eval/)          | Joint retriever+generator quality: Ragas, TruLens, ARES, plus an end-to-end pipeline that wires `retrieval/` into a generator. |
+| [`agent_eval/`](agent_eval/)      | Tool-using, multi-turn agent benchmarks: τ-bench (retail / airline), SWE-bench Verified, GAIA. |
+
+A ranked roadmap for what else to add (code eval, long-context, safety,
+calibration, …) lives in [`EVAL_ROADMAP.md`](EVAL_ROADMAP.md).
 
 ## Repo philosophy
 

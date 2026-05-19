@@ -1,0 +1,67 @@
+[project]
+name = "rag-eval"
+version = "0.1.0"
+description = "RAG evaluation playground: Ragas, TruLens, ARES, plus an end-to-end pipeline that wires retrieval/ into a generator."
+readme = "README.md"
+authors = [
+    { name = "Hossein Sadeghi", email = "hse1984@gmail.com" }
+]
+requires-python = ">=3.10,<3.13"
+
+# Core deps shared by every demo. Each library has its own extra below so
+# you only pull what you actually plan to run.
+dependencies = [
+    "datasets>=3.0",
+    "pandas>=2.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# Ragas — LLM-as-judge metrics. LiteLLM lets us point at OpenAI, Anthropic,
+# Ollama, or a local vLLM endpoint with the same code path.
+ragas = [
+    "ragas>=0.2",
+    "litellm>=1.40",
+]
+
+# TruLens core. The `trulens-providers-litellm` package wires arbitrary
+# backends in via LiteLLM the same way Ragas does.
+trulens = [
+    "trulens>=1.0",
+    "trulens-providers-litellm>=1.0",
+    "litellm>=1.40",
+]
+
+# ARES trains a small classifier; needs torch + PEFT. Pinned transformers
+# to 4.x to stay consistent with llm_judges/ and avoid 5.x churn.
+ares = [
+    "ares-ai>=0.5",
+    "torch>=2.0",
+    "transformers>=4.40,<5",
+    "peft>=0.11",
+    "accelerate>=0.30",
+]
+
+# end_to_end/ uses the retrieval/ subproject's outputs (SQLite DB + BM25
+# index) and a small generator LLM. sentence-transformers handles dense
+# search; transformers handles the generator side.
+end_to_end = [
+    "sentence-transformers>=3.0",
+    "rank-bm25>=0.2.2",
+    "torch>=2.0",
+    "transformers>=4.40,<5",
+]
+
+all = [
+    "rag-eval[ragas,trulens,ares,end_to_end]",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
