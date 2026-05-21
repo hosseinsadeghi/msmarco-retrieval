@@ -25,7 +25,11 @@ from pathlib import Path
 import torch
 from huggingface_hub import hf_hub_download
 from rouge_score import rouge_scorer
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForImageTextToText,
+    AutoTokenizer,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -35,12 +39,18 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 MODELS = [
     "Qwen/Qwen2.5-0.5B-Instruct",
     "Qwen/Qwen2.5-1.5B-Instruct",
-    # Qwen3 small dense models. There is no "Qwen3.5" release; 0.6B / 1.7B are
-    # the smallest dense checkpoints in the Qwen3 family. They support
-    # thinking mode by default — we disable it below via the chat template
-    # because we want fast direct summaries, not chain-of-thought traces.
+    # Qwen3 small dense models. 0.6B / 1.7B are the smallest dense
+    # checkpoints in the Qwen3 family. They support thinking mode by
+    # default — we disable it below via the chat template because we want
+    # fast direct summaries, not chain-of-thought traces.
     "Qwen/Qwen3-0.6B",
     "Qwen/Qwen3-1.7B",
+    # Qwen3.5 was released 2026-02-28. Architecture is `qwen3_5`, a hybrid
+    # multimodal (text + vision) model with Gated Delta Networks + sparse
+    # MoE — so it needs AutoModelForImageTextToText, not the plain causal-LM
+    # loader. We feed it text only (no images), which the model handles fine.
+    # Requires transformers >= 5.6 for the qwen3_5 architecture to register.
+    "Qwen/Qwen3.5-0.8B",
 ]
 
 
@@ -134,22 +144,36 @@ def build_prompt(subset: str, example: dict) -> str:
     return cfg["prompt_tmpl"].format(context=context)
 
 
+def _model_loader_class(model_id: str):
+    """Pick the right Auto class for the architecture.
+
+    Qwen3.5 is multimodal (image-text-to-text); the plain causal-LM loader
+    doesn't recognize its `qwen3_5` model_type. Every other model in our
+    list is a standard decoder-only LM.
+    """
+    if "qwen3.5" in model_id.lower():
+        return AutoModelForImageTextToText
+    return AutoModelForCausalLM
+
+
 def generate_for_model(model_id: str, data: dict[str, list[dict]],
                        max_new_tokens: int, device: str) -> dict[str, list[dict]]:
     print(f"\n→ Loading {model_id} ...")
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(
+    loader_cls = _model_loader_class(model_id)
+    model = loader_cls.from_pretrained(
         model_id,
-        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+        dtype=torch.bfloat16 if device == "cuda" else torch.float32,
         device_map=device,
     )
     model.eval()
 
-    # Qwen3 chat template supports an `enable_thinking` flag that toggles
-    # the model's chain-of-thought trace. We want clean summaries, not
-    # reasoning blocks, so turn it off for any Qwen3 checkpoint.
+    # Qwen3 and Qwen3.5 chat templates support an `enable_thinking` flag
+    # that toggles the model's chain-of-thought trace. We want clean
+    # summaries, not reasoning blocks, so turn it off whenever supported.
     chat_kwargs: dict = {}
-    if "qwen3" in model_id.lower():
+    mid_lower = model_id.lower()
+    if "qwen3" in mid_lower:  # matches both "qwen3-" and "qwen3.5-"
         chat_kwargs["enable_thinking"] = False
 
     out: dict[str, list[dict]] = {}
@@ -157,17 +181,23 @@ def generate_for_model(model_id: str, data: dict[str, list[dict]],
         rows = []
         for i, ex in enumerate(examples):
             user_msg = build_prompt(subset, ex)
-            input_ids = tokenizer.apply_chat_template(
+            # transformers 5.x: apply_chat_template(..., return_tensors='pt')
+            # returns a BatchEncoding (dict with input_ids + attention_mask),
+            # not a plain tensor. Pass the whole dict into generate().
+            inputs = tokenizer.apply_chat_template(
                 [{"role": "user", "content": user_msg}],
                 return_tensors="pt",
                 add_generation_prompt=True,
                 **chat_kwargs,
-            ).to(device)
+            )
+            if hasattr(inputs, "to"):
+                inputs = inputs.to(device)
+            input_len = inputs["input_ids"].shape[1]
 
             t0 = time.time()
             with torch.inference_mode():
                 output_ids = model.generate(
-                    input_ids,
+                    **inputs,
                     max_new_tokens=max_new_tokens,
                     do_sample=False,
                     pad_token_id=tokenizer.eos_token_id,
@@ -175,7 +205,7 @@ def generate_for_model(model_id: str, data: dict[str, list[dict]],
             elapsed = time.time() - t0
 
             pred = tokenizer.decode(
-                output_ids[0, input_ids.shape[1]:], skip_special_tokens=True
+                output_ids[0, input_len:], skip_special_tokens=True
             ).strip()
             # Belt-and-braces: if a thinking-mode model leaked a <think>...
             # block (e.g. enable_thinking was ignored), strip it before
@@ -192,10 +222,10 @@ def generate_for_model(model_id: str, data: dict[str, list[dict]],
                 "reference": ref,
                 "prediction": pred,
                 "gen_seconds": round(elapsed, 2),
-                "input_tokens": int(input_ids.shape[1]),
+                "input_tokens": int(input_len),
             })
             print(f"   {subset}[{i + 1:>2}/{len(examples)}] "
-                  f"{elapsed:5.1f}s  in_tok={input_ids.shape[1]:>5}  "
+                  f"{elapsed:5.1f}s  in_tok={input_len:>5}  "
                   f"out_chars={len(pred)}")
         out[subset] = rows
 

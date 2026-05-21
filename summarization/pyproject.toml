@@ -10,9 +10,12 @@ requires-python = ">=3.10,<3.13"
 
 dependencies = [
     "torch>=2.0",
-    # Pinned to 4.x for the same reason as llm_judges/: 5.x reorganized
-    # internals and breaks several community model repos.
-    "transformers>=4.45,<5",
+    "torchvision>=0.18",       # required by Qwen3.5's multimodal processor stack
+    # transformers 5.x is required for the Qwen3.5 family (model_type=qwen3_5);
+    # 4.57 is the last 4.x and does not register that architecture. Older
+    # subprojects in this repo still pin to <5 because they hit unrelated 5.x
+    # internal-layout changes — summarization/ is independent so it can move.
+    "transformers>=5.6",
     "accelerate>=0.30",
     "datasets>=3.0",
     "rouge-score>=0.1.2",

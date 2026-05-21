@@ -5,19 +5,22 @@ LLMs, three LongBench subsets, two metrics, one HTML report.
 
 | Component | Choice | Why |
 | --- | --- | --- |
-| **Models** | `Qwen2.5-0.5B-Instruct`, `Qwen2.5-1.5B-Instruct`, `Qwen3-0.6B`, `Qwen3-1.7B` | Two sizes from each of two model generations — lets you read both the *capacity* effect (within a generation) and the *generation* effect (across them) off the same chart. Models are loaded one at a time and unloaded before the next; an 8 GB GPU is enough. |
+| **Models** | `Qwen2.5-0.5B-Instruct`, `Qwen2.5-1.5B-Instruct`, `Qwen3-0.6B`, `Qwen3-1.7B`, `Qwen3.5-0.8B` | Small checkpoints across three Qwen generations — lets you read the *capacity* effect (within a generation) and the *generation* effect (across them) off the same chart. Qwen3.5-0.8B is a multimodal model (text + vision); we feed it text only, which it handles fine. Models are loaded one at a time and unloaded before the next; an 8 GB GPU is enough. |
 | **Dataset** | [LongBench v1](https://huggingface.co/datasets/THUDM/LongBench) summarization subsets: `multi_news`, `gov_report`, `qmsum` | Three different summarization shapes: multi-doc news, single-doc government report, query-based meeting summary. |
 | **Metrics** | **ROUGE-L** (lexical overlap, F1) and **BERTScore-F1** (contextual semantic match using `roberta-large` by default) | Lexical and semantic; they often disagree, which is the interesting signal. |
 | **Output** | `results/results.json` (machine-readable) + `results/report.html` (human-readable) | JSON for re-analysis, HTML for skimming. |
 
 > **A note on model naming.** The original task asked for "qwen3.5-0.6b
-> and 0.8b". There is no Qwen 3.5 release; the closest small models are the
-> **Qwen2.5** small instruct variants (0.5B, 1.5B) and the **Qwen3** small
-> dense checkpoints (0.6B, 1.7B). All four are included in `MODELS` in
-> `scripts/run.py`. For the Qwen3 models, `enable_thinking=False` is passed
-> to the chat template so they emit direct summaries instead of `<think>`
-> traces; the script also strips any `<think>...</think>` block from
-> generated text as a belt-and-braces guard.
+> and 0.8b". Qwen3.5-0.8B exists (released 2026-02-28); Qwen3.5-0.6B
+> does not — 0.8B is the smallest checkpoint in that family. The
+> benchmark covers five models: the two Qwen2.5 small instruct variants
+> (0.5B, 1.5B), the two Qwen3 small dense checkpoints (0.6B, 1.7B), and
+> the Qwen3.5-0.8B multimodal model (used in text-only mode).
+>
+> Qwen3, Qwen3.5 are multi-mode reasoning models. We pass
+> `enable_thinking=False` to the chat template so they emit direct
+> summaries instead of `<think>` traces, and as a guard the script strips
+> any `<think>...</think>` block from generated text before scoring.
 
 ## Why LongBench (v1) and not v2?
 
@@ -48,9 +51,10 @@ cd summarization
 uv sync
 ```
 
-This pulls torch + transformers + the metric libs. First run also downloads
-~3 GB of model weights (Qwen2.5-0.5B, Qwen2.5-1.5B) and ~1.3 GB of BERTScore
-weights (`roberta-large`) into the HuggingFace cache.
+This pulls torch + transformers (5.x — required for the `qwen3_5`
+architecture) + torchvision (the Qwen3.5 stack uses it) + the metric libs.
+First run also downloads ~6 GB of model weights (the five Qwens) and
+~1.3 GB of BERTScore weights (`roberta-large`) into the HuggingFace cache.
 
 ## Run
 
