@@ -1,0 +1,32 @@
+[project]
+name = "summarization"
+version = "0.1.0"
+description = "Small-model summarization benchmark on LongBench subsets, scored with ROUGE-L and BERTScore, rendered to HTML."
+readme = "README.md"
+authors = [
+    { name = "Hossein Sadeghi", email = "hse1984@gmail.com" }
+]
+requires-python = ">=3.10,<3.13"
+
+dependencies = [
+    "torch>=2.0",
+    # Pinned to 4.x for the same reason as llm_judges/: 5.x reorganized
+    # internals and breaks several community model repos.
+    "transformers>=4.45,<5",
+    "accelerate>=0.30",
+    "datasets>=3.0",
+    "rouge-score>=0.1.2",
+    "bert-score>=0.3.13",
+    "sentencepiece>=0.2",
+    "protobuf>=4",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

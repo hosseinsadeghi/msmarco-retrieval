@@ -13,6 +13,7 @@ folder and start there.
 | [`llm_judges/`](llm_judges/)      | Hands-on demos of 5 LLM-quality / LLM-routing models: Prometheus 2, PandaLM, Auto-J (+ 4-bit), Vectara HHEM, RouteLLM. |
 | [`rag_eval/`](rag_eval/)          | Joint retriever+generator quality: Ragas, TruLens, ARES, plus an end-to-end pipeline that wires `retrieval/` into a generator. |
 | [`agent_eval/`](agent_eval/)      | Tool-using, multi-turn agent benchmarks: τ-bench (retail / airline), SWE-bench Verified, GAIA. |
+| [`summarization/`](summarization/) | Small-model summarization benchmark: Qwen2.5-0.5B & 1.5B Instruct on LongBench subsets (`multi_news`, `gov_report`, `qmsum`), scored with ROUGE-L + BERTScore, rendered to HTML. |
 
 A ranked roadmap for what else to add (code eval, long-context, safety,
 calibration, …) lives in [`EVAL_ROADMAP.md`](EVAL_ROADMAP.md).

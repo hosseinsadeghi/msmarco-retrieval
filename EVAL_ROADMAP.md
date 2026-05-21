@@ -53,6 +53,7 @@ safety, or long-context.
 - [x] `llm_judges/`
 - [x] `rag_eval/` — scaffolded
 - [x] `agent_eval/` — scaffolded
+- [x] `summarization/` — Qwen2.5 0.5B/1.5B on LongBench, ROUGE-L + BERTScore, HTML report
 - [ ] `code_eval/`
 - [ ] `long_context/`
 - [ ] `safety_redteam/`
