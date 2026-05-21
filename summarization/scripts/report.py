@@ -55,10 +55,29 @@ td.best { background: var(--accent-light); font-weight: 600; color: var(--good);
         gap: 8px 12px; align-items: center; margin: 8px 0; }
 .bar-row .label { color: var(--muted); font-size: 13px; }
 .bar-track { background: #eef0f3; height: 14px; border-radius: 7px;
-             overflow: hidden; position: relative; }
+             overflow: visible; position: relative; }
 .bar-fill { height: 100%; border-radius: 7px; }
 .bar-val { font-variant-numeric: tabular-nums; font-size: 13px;
            text-align: right; color: var(--muted); }
+.ref-marker {
+  position: absolute; top: -3px; bottom: -3px; width: 2px;
+  background: #c0392b; opacity: 0.85;
+}
+.ref-marker::after {
+  content: attr(data-label); position: absolute; top: -16px;
+  left: 50%; transform: translateX(-50%);
+  font-size: 10px; color: #c0392b; white-space: nowrap;
+  font-weight: 600;
+}
+.ref-marker.alt { background: #7d3c98; }
+.ref-marker.alt::after { color: #7d3c98; top: auto; bottom: -16px; }
+.ref-legend { font-size: 12px; color: var(--muted); margin: 6px 0 14px; }
+.ref-legend .swatch { display: inline-block; width: 12px; height: 2px;
+                      vertical-align: middle; margin: 0 4px 0 12px; }
+.ref-table { margin-top: 8px; }
+.ref-table th, .ref-table td { font-size: 13px; }
+.ref-note { font-size: 12px; color: var(--muted); margin-top: 8px;
+            line-height: 1.5; }
 .card {
   background: white; border: 1px solid var(--border); border-radius: 8px;
   padding: 16px 20px; margin-bottom: 14px;
@@ -128,34 +147,110 @@ def _aggregate_table(agg: dict, models: list[str], subsets: list[str]) -> str:
     )
 
 
-def _bars(agg: dict, models: list[str], subsets: list[str]) -> str:
-    """One bar chart per metric, with one row per (model, subset)."""
+def _bars(agg: dict, refs: dict, models: list[str], subsets: list[str]) -> str:
+    """One bar chart per metric, with one row per (model, subset).
+
+    Reference markers (red = frontier-LLM number from LongBench paper;
+    purple = supervised SoTA on the standalone benchmark) overlay each row.
+    """
     out = []
+    metric_to_ref_key = {
+        "rougeL_mean": "rougeL",
+        "bertscore_f1_mean": "bertscore_f1",
+    }
     for metric, label, vmax in [
         ("rougeL_mean", "ROUGE-L", 0.5),
         ("bertscore_f1_mean", "BERTScore-F1", 1.0),
     ]:
         out.append(f"<h3>{label}</h3>")
+        out.append(
+            "<div class='ref-legend'>"
+            "<span class='swatch' style='background:#c0392b;'></span> frontier LLM (LongBench paper)"
+            "<span class='swatch' style='background:#7d3c98;'></span> supervised SoTA on the standalone benchmark"
+            "</div>"
+        )
         bar_color = "var(--bar1)" if metric == "rougeL_mean" else "var(--bar2)"
-        # max across all cells for the scale (capped at vmax to keep tiny scores visible)
+        # Scale: include reference values so they fit on the track.
         cell_vals = [agg[m][s][metric] for m in models for s in subsets]
-        scale = max(max(cell_vals) * 1.1, 0.05)
+        ref_key = metric_to_ref_key[metric]
+        ref_vals = []
+        for s in subsets:
+            for v in (refs.get(s, {}).get(ref_key) or {}).values():
+                ref_vals.append(v)
+        scale = max(max(cell_vals + ref_vals) * 1.1, 0.05)
         scale = min(scale, vmax)
         for m in models:
             short = m.split("/")[-1]
             for s in subsets:
                 v = agg[m][s][metric]
                 w = max(2, min(100, v / scale * 100))
+                sub_refs = (refs.get(s, {}).get(ref_key) or {})
+                frontier = sub_refs.get("frontier_llm")
+                sup = sub_refs.get("supervised_sota")
+                markers = []
+                if frontier is not None:
+                    pos = min(99, frontier / scale * 100)
+                    markers.append(
+                        f"<div class='ref-marker' style='left:{pos:.1f}%;' "
+                        f"data-label='LLM {frontier:.2f}'></div>"
+                    )
+                if sup is not None:
+                    pos = min(99, sup / scale * 100)
+                    markers.append(
+                        f"<div class='ref-marker alt' style='left:{pos:.1f}%;' "
+                        f"data-label='SoTA {sup:.2f}'></div>"
+                    )
                 out.append(
                     "<div class='bars bar-row'>"
                     f"<div class='label'>{_esc(short)} · {_esc(s)}</div>"
                     "<div class='bar-track'>"
                     f"<div class='bar-fill' style='width:{w:.1f}%; background:{bar_color};'></div>"
+                    + "".join(markers) +
                     "</div>"
                     f"<div class='bar-val'>{v:.3f}</div>"
                     "</div>"
                 )
     return "\n".join(out)
+
+
+def _reference_table(refs: dict, subsets: list[str]) -> str:
+    """Static reference numbers from the literature, for context."""
+    rows = []
+    for s in subsets:
+        sub = refs.get(s, {})
+        rl = sub.get("rougeL", {})
+        bs = sub.get("bertscore_f1", {})
+        rows.append(
+            "<tr>"
+            f"<td>{_esc(s)}</td>"
+            f"<td class='num'>{rl.get('frontier_llm', 0):.3f}</td>"
+            f"<td class='num'>{rl.get('supervised_sota', 0):.3f}</td>"
+            f"<td class='num'>{bs.get('supervised_sota', 0):.3f}</td>"
+            f"<td class='num'>{bs.get('unrelated_floor', 0):.3f}</td>"
+            "</tr>"
+        )
+    return (
+        "<table class='ref-table'><thead><tr>"
+        "<th>Subset</th>"
+        "<th>ROUGE-L · frontier LLM</th>"
+        "<th>ROUGE-L · supervised SoTA</th>"
+        "<th>BERTScore-F1 · supervised SoTA</th>"
+        "<th>BERTScore-F1 · floor</th>"
+        "</tr></thead><tbody>"
+        + "\n".join(rows)
+        + "</tbody></table>"
+        + "<p class='ref-note'>"
+        + "<b>Frontier LLM</b> = GPT-3.5-Turbo-16k on LongBench v1 (Bai et al., "
+        + "<a href='https://arxiv.org/abs/2308.14508'>arXiv:2308.14508</a>, Table 4). "
+        + "<b>Supervised SoTA</b> = a strong abstractive model fine-tuned on the "
+        + "standalone benchmark (PRIMERA for Multi-News, LED / PEGASUS-X for "
+        + "GovReport, DialogLED for QMSum). "
+        + "<b>Floor</b> = BERTScore-F1 between unrelated English text. "
+        + "Numbers are approximate ranges, not single-paper authoritative; "
+        + "they exist to put the (model, subset) scores above into context, "
+        + "not to claim a precise gap."
+        + "</p>"
+    )
 
 
 def _example_cards(per_example: dict, models: list[str], subsets: list[str],
@@ -217,6 +312,7 @@ def _example_cards(per_example: dict, models: list[str], subsets: list[str],
 def render(data: dict) -> str:
     cfg = data["config"]
     agg = data["aggregate"]
+    refs = data.get("references", {})
     per_example = data["per_example"]
     models = cfg["models"]
     subsets = cfg["subsets"]
@@ -236,14 +332,15 @@ def render(data: dict) -> str:
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Summarization benchmark — Qwen2.5 small models on LongBench</title>
+<title>Summarization benchmark — small Qwen models on LongBench v1</title>
 <style>{CSS}</style>
 </head>
 <body>
 <h1>Summarization benchmark</h1>
-<p class="sub">Small Qwen2.5 instruction-tuned models on LongBench v1
+<p class="sub">Small Qwen2.5 and Qwen3 models on LongBench v1
 summarization subsets, scored with ROUGE-L (lexical) and BERTScore-F1
-(semantic).</p>
+(semantic). Reference markers on each bar show frontier-LLM and
+supervised-SoTA targets from the literature.</p>
 
 {config_html}
 
@@ -251,8 +348,14 @@ summarization subsets, scored with ROUGE-L (lexical) and BERTScore-F1
 <p class="sub">Best score per (metric × subset) highlighted.</p>
 {_aggregate_table(agg, models, subsets)}
 
+<h2>Reference numbers (from the literature)</h2>
+<p class="sub">For context only — the rows above are our small-model
+measurements; the rows below are what stronger systems achieve on the
+same data.</p>
+{_reference_table(refs, subsets)}
+
 <h2>Per-metric comparison</h2>
-{_bars(agg, models, subsets)}
+{_bars(agg, refs, models, subsets)}
 
 <h2>Example outputs</h2>
 <p class="sub">Two examples per subset. Click <i>Show full context preview</i>

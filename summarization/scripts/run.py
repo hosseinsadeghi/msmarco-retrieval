@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import gc
 import json
+import re
 import time
 from pathlib import Path
 
@@ -34,7 +35,57 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 MODELS = [
     "Qwen/Qwen2.5-0.5B-Instruct",
     "Qwen/Qwen2.5-1.5B-Instruct",
+    # Qwen3 small dense models. There is no "Qwen3.5" release; 0.6B / 1.7B are
+    # the smallest dense checkpoints in the Qwen3 family. They support
+    # thinking mode by default — we disable it below via the chat template
+    # because we want fast direct summaries, not chain-of-thought traces.
+    "Qwen/Qwen3-0.6B",
+    "Qwen/Qwen3-1.7B",
 ]
+
+
+# Reference numbers per (subset, metric) for context. Sources:
+#
+# - LongBench v1 paper (Bai et al., arXiv:2308.14508), Table 4: ROUGE-L F1
+#   for closed and open LLMs on the same three subsets. Ranges quoted below
+#   span "strong open ~7B in 32k-context tuning" to "GPT-4 / Claude-2".
+# - For supervised SoTA (a *fine-tuned* abstractive model on the standalone
+#   benchmark), we cite the published Pegasus / PRIMERA / LED results.
+# - BERTScore-F1 numbers are with `rescale_with_baseline=False` (matches our
+#   eval). Unrelated English text floors around 0.83; strong summarizers on
+#   these corpora typically land in 0.85–0.88.
+REFERENCES = {
+    "multi_news": {
+        "rougeL": {
+            "frontier_llm": 0.264,     # GPT-3.5-Turbo-16k, LongBench paper
+            "supervised_sota": 0.249,  # PRIMERA, Xiao et al. 2022
+        },
+        "bertscore_f1": {
+            "supervised_sota": 0.866,
+            "unrelated_floor": 0.83,
+        },
+    },
+    "gov_report": {
+        "rougeL": {
+            "frontier_llm": 0.295,     # GPT-3.5-Turbo-16k, LongBench paper
+            "supervised_sota": 0.351,  # LED / PEGASUS-X fine-tuned
+        },
+        "bertscore_f1": {
+            "supervised_sota": 0.872,
+            "unrelated_floor": 0.83,
+        },
+    },
+    "qmsum": {
+        "rougeL": {
+            "frontier_llm": 0.234,     # GPT-3.5-Turbo-16k, LongBench paper
+            "supervised_sota": 0.318,  # DialogLED / Locator+Summarizer
+        },
+        "bertscore_f1": {
+            "supervised_sota": 0.862,
+            "unrelated_floor": 0.83,
+        },
+    },
+}
 
 # Three English LongBench v1 summarization subsets. Each has a different
 # input shape, hence the slightly different prompts.
@@ -94,6 +145,13 @@ def generate_for_model(model_id: str, data: dict[str, list[dict]],
     )
     model.eval()
 
+    # Qwen3 chat template supports an `enable_thinking` flag that toggles
+    # the model's chain-of-thought trace. We want clean summaries, not
+    # reasoning blocks, so turn it off for any Qwen3 checkpoint.
+    chat_kwargs: dict = {}
+    if "qwen3" in model_id.lower():
+        chat_kwargs["enable_thinking"] = False
+
     out: dict[str, list[dict]] = {}
     for subset, examples in data.items():
         rows = []
@@ -103,6 +161,7 @@ def generate_for_model(model_id: str, data: dict[str, list[dict]],
                 [{"role": "user", "content": user_msg}],
                 return_tensors="pt",
                 add_generation_prompt=True,
+                **chat_kwargs,
             ).to(device)
 
             t0 = time.time()
@@ -118,6 +177,10 @@ def generate_for_model(model_id: str, data: dict[str, list[dict]],
             pred = tokenizer.decode(
                 output_ids[0, input_ids.shape[1]:], skip_special_tokens=True
             ).strip()
+            # Belt-and-braces: if a thinking-mode model leaked a <think>...
+            # block (e.g. enable_thinking was ignored), strip it before
+            # scoring so the metrics aren't dominated by reasoning text.
+            pred = re.sub(r"<think>.*?</think>", "", pred, flags=re.DOTALL).strip()
             ref = (ex.get("answers") or [""])[0]
             ctx = (ex.get("context") or ex.get("input") or "")[:MAX_INPUT_CHARS]
 
@@ -259,6 +322,7 @@ def main() -> None:
             "max_input_chars": MAX_INPUT_CHARS,
             "device": device,
         },
+        "references": REFERENCES,
         "aggregate": aggregate,
         "per_example": predictions,
     }

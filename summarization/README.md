@@ -5,18 +5,19 @@ LLMs, three LongBench subsets, two metrics, one HTML report.
 
 | Component | Choice | Why |
 | --- | --- | --- |
-| **Models** | `Qwen/Qwen2.5-0.5B-Instruct` and `Qwen/Qwen2.5-1.5B-Instruct` | Same family, two sizes — isolates the effect of capacity. Both fit on an 8 GB GPU together. |
+| **Models** | `Qwen2.5-0.5B-Instruct`, `Qwen2.5-1.5B-Instruct`, `Qwen3-0.6B`, `Qwen3-1.7B` | Two sizes from each of two model generations — lets you read both the *capacity* effect (within a generation) and the *generation* effect (across them) off the same chart. Models are loaded one at a time and unloaded before the next; an 8 GB GPU is enough. |
 | **Dataset** | [LongBench v1](https://huggingface.co/datasets/THUDM/LongBench) summarization subsets: `multi_news`, `gov_report`, `qmsum` | Three different summarization shapes: multi-doc news, single-doc government report, query-based meeting summary. |
 | **Metrics** | **ROUGE-L** (lexical overlap, F1) and **BERTScore-F1** (contextual semantic match using `roberta-large` by default) | Lexical and semantic; they often disagree, which is the interesting signal. |
 | **Output** | `results/results.json` (machine-readable) + `results/report.html` (human-readable) | JSON for re-analysis, HTML for skimming. |
 
 > **A note on model naming.** The original task asked for "qwen3.5-0.6b
-> and 0.8b". No model under that exact name exists. The closest small
-> instruction-tuned Qwen models are **Qwen2.5-0.5B-Instruct** and
-> **Qwen2.5-1.5B-Instruct**, which is what's used here. To swap in
-> Qwen3-0.6B / Qwen3-1.7B (which need `enable_thinking=False` in the
-> chat template to skip their `<think>` traces), edit the `MODELS` list
-> in `scripts/run.py`.
+> and 0.8b". There is no Qwen 3.5 release; the closest small models are the
+> **Qwen2.5** small instruct variants (0.5B, 1.5B) and the **Qwen3** small
+> dense checkpoints (0.6B, 1.7B). All four are included in `MODELS` in
+> `scripts/run.py`. For the Qwen3 models, `enable_thinking=False` is passed
+> to the chat template so they emit direct summaries instead of `<think>`
+> traces; the script also strips any `<think>...</think>` block from
+> generated text as a belt-and-braces guard.
 
 ## Why LongBench (v1) and not v2?
 
@@ -73,15 +74,41 @@ hierarchy.
 
 ## What the report shows
 
-`results/report.html` has three sections:
+`results/report.html` has four sections:
 
 1. **Aggregate scores** — a model × subset table of mean ROUGE-L,
-   BERTScore-F1, and average generation time.
-2. **Per-metric bar charts** — pure CSS (no JS), one bar per
-   (model, subset) cell, so you can eyeball which combination won.
-3. **Example outputs** — a handful of (context preview / reference /
-   prediction-from-each-model) cards so you can sanity-check what the
-   models actually produced. Click a card to expand the full context.
+   BERTScore-F1, and average generation time. Best score per
+   (metric × subset) highlighted.
+2. **Reference numbers** — a small table with literature values per subset
+   (frontier-LLM ROUGE-L from the LongBench paper, supervised-SoTA
+   ROUGE-L and BERTScore-F1 from the standalone benchmarks, and a
+   BERTScore floor for unrelated text). This is the context you need to
+   read the aggregate table sensibly.
+3. **Per-metric bar charts** — pure CSS (no JS), one bar per
+   (model, subset) cell, **with the two reference values from §2 drawn as
+   vertical markers** on each bar so you can see at a glance how far each
+   small model is from frontier / SoTA.
+4. **Example outputs** — two (context preview / reference / prediction-from-
+   each-model) cards per subset so you can sanity-check what the models
+   actually produced. Click *Show full context preview* to expand.
+
+### What counts as a reference number
+
+- **Frontier LLM (ROUGE-L)** — `GPT-3.5-Turbo-16k` numbers from Table 4 of
+  the LongBench paper (Bai et al., [arXiv:2308.14508](https://arxiv.org/abs/2308.14508)).
+  Approximate: Multi-News 0.264, GovReport 0.295, QMSum 0.234.
+- **Supervised SoTA (ROUGE-L)** — strong fine-tuned abstractive models on
+  the *standalone* benchmark (not LongBench's truncated slice): PRIMERA
+  (Multi-News, ~0.249), LED / PEGASUS-X (GovReport, ~0.35), DialogLED /
+  Locator+Summarizer (QMSum, ~0.32).
+- **Supervised SoTA (BERTScore-F1)** — same models, with
+  `rescale_with_baseline=False` (matches our eval). Typically ~0.86–0.88.
+- **BERTScore-F1 floor** — between *unrelated* English text, ~0.83. Any
+  system anywhere near this is producing noise.
+
+These are approximate, not single-paper authoritative — they exist to put
+the small-model numbers in *roughly the right ballpark*, not to claim a
+precise gap.
 
 ## When to reach for this folder
 
